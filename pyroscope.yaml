@@ -37,6 +37,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: pyroscope-agent
+  namespace: pyroscope
   labels:
     helm.sh/chart: agent-0.25.0
     app.kubernetes.io/name: agent
@@ -72,793 +73,68 @@ metadata:
 data:
   config.river: |
     logging {
-    	level  = "info"
-    	format = "logfmt"
+      level  = "info"
+      format = "logfmt"
     }
 
-    discovery.kubernetes "pyroscope_kubernetes" {
-    	role = "pod"
+    discovery.kubernetes "kubeapiserver" {
+      role = "endpoints"
+      namespaces {
+        names = ["default"]
+      }
     }
 
-    // The default scrape config allows to define annotations based scraping.
-    //
-    // For example the following annotations:
-    //
-    // ```
-    // profiles.grafana.com/memory.scrape: "true"
-    // profiles.grafana.com/memory.port: "8080"
-    // profiles.grafana.com/cpu.scrape: "true"
-    // profiles.grafana.com/cpu.port: "8080"
-    // profiles.grafana.com/goroutine.scrape: "true"
-    // profiles.grafana.com/goroutine.port: "8080"
-    // ```
-    //
-    // will scrape the `memory`, `cpu` and `goroutine` profiles from the `8080` port of the pod.
-    //
-    // For more information see https://grafana.com/docs/phlare/latest/operators-guide/deploy-kubernetes/#optional-scrape-your-own-workloads-profiles
-    discovery.relabel "kubernetes_pods" {
-    	targets = concat(discovery.kubernetes.pyroscope_kubernetes.targets)
-
-    	rule {
-    		action        = "drop"
-    		source_labels = ["__meta_kubernetes_pod_phase"]
-    		regex         = "Pending|Succeeded|Failed|Completed"
-    	}
-
-    	rule {
-    		action = "labelmap"
-    		regex  = "__meta_kubernetes_pod_label_(.+)"
-    	}
-
-    	rule {
-    		action        = "replace"
-    		source_labels = ["__meta_kubernetes_namespace"]
-    		target_label  = "namespace"
-    	}
-
-    	rule {
-    		action        = "replace"
-    		source_labels = ["__meta_kubernetes_pod_name"]
-    		target_label  = "pod"
-    	}
-
-    	rule {
-    		action        = "replace"
-    		source_labels = ["__meta_kubernetes_pod_container_name"]
-    		target_label  = "container"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_memory_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_memory_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_memory_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_memory" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_memory_default_name.output, discovery.relabel.kubernetes_pods_memory_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = true
-    		}
-
-    		profile.process_cpu {
-    			enabled = false
-    		}
-
-    		profile.goroutine {
-    			enabled = false
-    		}
-
-    		profile.block {
-    			enabled = false
-    		}
-
-    		profile.mutex {
-    			enabled = false
-    		}
-
-    		profile.fgprof {
-    			enabled = false
-    		}
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_cpu_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_cpu_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_cpu_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_cpu" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_cpu_default_name.output, discovery.relabel.kubernetes_pods_cpu_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = false
-    		}
-
-    		profile.process_cpu {
-    			enabled = true
-    		}
-
-    		profile.goroutine {
-    			enabled = false
-    		}
-
-    		profile.block {
-    			enabled = false
-    		}
-
-    		profile.mutex {
-    			enabled = false
-    		}
-
-    		profile.fgprof {
-    			enabled = false
-    		}
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_goroutine_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_goroutine_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_goroutine_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_goroutine" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_goroutine_default_name.output, discovery.relabel.kubernetes_pods_goroutine_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = false
-    		}
-
-    		profile.process_cpu {
-    			enabled = false
-    		}
-
-    		profile.goroutine {
-    			enabled = true
-    		}
-
-    		profile.block {
-    			enabled = false
-    		}
-
-    		profile.mutex {
-    			enabled = false
-    		}
-
-    		profile.fgprof {
-    			enabled = false
-    		}
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_block_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_block_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_block_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_block_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_block_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_block_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_block" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_block_default_name.output, discovery.relabel.kubernetes_pods_block_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = false
-    		}
-
-    		profile.process_cpu {
-    			enabled = false
-    		}
-
-    		profile.goroutine {
-    			enabled = false
-    		}
-
-    		profile.block {
-    			enabled = true
-    		}
-
-    		profile.mutex {
-    			enabled = false
-    		}
-
-    		profile.fgprof {
-    			enabled = false
-    		}
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_mutex_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_mutex_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_mutex_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_mutex" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_mutex_default_name.output, discovery.relabel.kubernetes_pods_mutex_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = false
-    		}
-
-    		profile.process_cpu {
-    			enabled = false
-    		}
-
-    		profile.goroutine {
-    			enabled = false
-    		}
-
-    		profile.block {
-    			enabled = false
-    		}
-
-    		profile.mutex {
-    			enabled = true
-    		}
-
-    		profile.fgprof {
-    			enabled = false
-    		}
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_fgprof_default_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_port_name"]
-    		action        = "keep"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    discovery.relabel "kubernetes_pods_fgprof_custom_name" {
-    	targets = concat(discovery.relabel.kubernetes_pods.output)
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_scrape"]
-    		action        = "keep"
-    		regex         = "true"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_port_name"]
-    		action        = "drop"
-    		regex         = ""
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_container_port_name"]
-    		target_label  = "__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_port_name"
-    		action        = "keepequal"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_scheme"]
-    		action        = "replace"
-    		regex         = "(https?)"
-    		target_label  = "__scheme__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_path"]
-    		action        = "replace"
-    		regex         = "(.+)"
-    		target_label  = "__profile_path__"
-    		replacement   = "$1"
-    	}
-
-    	rule {
-    		source_labels = ["__address__", "__meta_kubernetes_pod_annotation_profiles_grafana_com_fgprof_port"]
-    		action        = "replace"
-    		regex         = "(.+?)(?::\\d+)?;(\\d+)"
-    		target_label  = "__address__"
-    		replacement   = "$1:$2"
-    	}
-    }
-
-    pyroscope.scrape "pyroscope_scrape_fgprof" {
-    	clustering {
-    		enabled = true
-    	}
-
-    	targets    = concat(discovery.relabel.kubernetes_pods_fgprof_default_name.output, discovery.relabel.kubernetes_pods_fgprof_custom_name.output)
-    	forward_to = [pyroscope.write.pyroscope_write.receiver]
-
-    	profiling_config {
-    		profile.memory {
-    			enabled = false
-    		}
-
-    		profile.process_cpu {
-    			enabled = false
-    		}
-
-    		profile.goroutine {
-    			enabled = false
-    		}
-
-    		profile.block {
-    			enabled = false
-    		}
-
-    		profile.mutex {
-    			enabled = false
-    		}
-
-    		profile.fgprof {
-    			enabled = true
-    		}
-    	}
+    pyroscope.scrape "pyroscope_scrape {
+      clustering {
+        enabled = true
+      }
+
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      tls_config {
+        insecure_skip_verify = true
+        server_name = "kubernetes"
+        ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        cert_file = "/var/run/secrets/kubeapi-certs/tls.crt"
+        key_file = "/var/run/secrets/kubeapi-certs/tls.key"
+      }
+      scheme = "https"
+
+      targets    = concat(discovery.kubernetes.kubeapiserver.targets)
+      forward_to = [pyroscope.write.pyroscope_write.receiver]
+
+      profiling_config {
+        profile.memory {
+          enabled = true
+          path = "/debug/pprof/heap"
+        }
+
+        profile.process_cpu {
+          enabled = true
+          path = "/debug/pprof/profile"
+        }
+
+        profile.goroutine {
+          enabled = false
+        }
+
+        profile.block {
+          enabled = false
+        }
+
+        profile.mutex {
+          enabled = false
+        }
+
+        profile.fgprof {
+          enabled = false
+        }
+      }
     }
 
     pyroscope.write "pyroscope_write" {
-    	endpoint {
-    		url = "http://pyroscope.pyroscope.svc.cluster.local.:4040"
-    	}
+      endpoint {
+        url = "http://pyroscope.pyroscope.svc.cluster.local.:4040"
+      }
     }
 ---
 # Source: pyroscope/templates/configmap-overrides.yaml
@@ -1048,6 +324,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: pyroscope-agent-cluster
+  namespace: pyroscope
   labels:
     helm.sh/chart: agent-0.25.0
     app.kubernetes.io/name: agent
@@ -1077,6 +354,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: pyroscope-agent
+  namespace: pyroscope
   labels:
     helm.sh/chart: agent-0.25.0
     app.kubernetes.io/name: agent
@@ -1188,6 +466,19 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  name: pyroscope-agent-cluster-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-reader
+subjects:
+- kind: ServiceAccount
+  name: pyroscope-agent
+  namespace: pyroscope
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
   name: pyroscope-anyuid
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -1202,7 +493,8 @@ subjects:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: pyroscope-agent
+  name: grafana-agent
+  namespace: pyroscope
   labels:
     helm.sh/chart: agent-0.25.0
     app.kubernetes.io/name: agent
@@ -1219,13 +511,6 @@ spec:
       app.kubernetes.io/instance: pyroscope
   template:
     metadata:
-      annotations:
-        profiles.grafana.com/cpu.port_name: http-metrics
-        profiles.grafana.com/cpu.scrape: "true"
-        profiles.grafana.com/goroutine.port_name: http-metrics
-        profiles.grafana.com/goroutine.scrape: "true"
-        profiles.grafana.com/memory.port_name: http-metrics
-        profiles.grafana.com/memory.scrape: "true"
       labels:
         app.kubernetes.io/name: agent
         app.kubernetes.io/instance: pyroscope
@@ -1261,6 +546,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/agent
+            - name: kubeapi-certs
+              mountPath: /var/run/secrets/kubeapi-certs
         - name: config-reloader
           image: docker.io/jimmidyson/configmap-reload:v0.8.0
           args:
@@ -1278,6 +565,9 @@ spec:
         - name: config
           configMap:
             name: grafana-agent-config-pyroscope
+        - name: kubeapi-certs
+          secret:
+            secretName: kubeapi-certs
 ---
 # Source: pyroscope/templates/deployments-statefulsets.yaml
 apiVersion: apps/v1
@@ -1369,3 +659,14 @@ spec:
             name: pyroscope-overrides-config
         - name: data
           emptyDir: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeapi-certs
+  namespace: pyroscope
+data:
+  tls.crt: |
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURaekNDQWsrZ0F3SUJBZ0lJTEZSS0xqYmsyUGN3RFFZSktvWklodmNOQVFFTEJRQXdOakVTTUJBR0ExVUUKQ3hNSmIzQmxibk5vYVdaME1TQXdIZ1lEVlFRREV4ZGhaRzFwYmkxcmRXSmxZMjl1Wm1sbkxYTnBaMjVsY2pBZQpGdzB5TXpFeE1UZ3dPRFUyTWpWYUZ3MHpNekV4TVRVd09EVTJNalZhTURBeEZ6QVZCZ05WQkFvVERuTjVjM1JsCmJUcHRZWE4wWlhKek1SVXdFd1lEVlFRREV3eHplWE4wWlcwNllXUnRhVzR3Z2dFaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUUMrcDJoSEV5UlRHdUZZdlo2VDVTTUdyMk0wREc0SzZidTZoZzJSYjhTSApZRXdJTUFNMTZVb1ZqWmVTcG9vVzF5WmtubnVvZ2NLeGkxZytTZUI3VkJYaWpWQnAwdTcrejFjMmRqRC9vUlJRCmNIK3ljREoyT1hScVJIYkdONjJKajBLYjNnUWFTVmxSRVp3V1JtT1o1TktneU90WDZERU5zUUlPWS85Z0pkZ0IKTzJ3a05EbzZtN25lRkNZV2lHV0gyVm9mOGIvTFZvNHVSTytTbmk5NHpQSjhFKzBkYXZaTVVqNGlUZUVvQml5SwovSGVneVRuV0pzVmk4cGsyOW1GQUNLMW9MaXZ1ck51YVBqVHY4ckdJY0VHVHVQZlQrcFJFTTd5WnNFWDkrSHRMCjM4OEIrdkx6dXNwNDFDRjc4Tmd1OEMxTUdaMFhZdU1Hd01rZXBaNTdRemE1QWdNQkFBR2pmekI5TUE0R0ExVWQKRHdFQi93UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEQVlEVlIwVApBUUgvQkFJd0FEQWRCZ05WSFE0RUZnUVUwb053OEUvMkxtMnI3dklHUHVNNE1jclg4WVF3SHdZRFZSMGpCQmd3CkZvQVVpVTZXRXp6NlhudGtuQ1JqRVV3clhVUGdXK1V3RFFZSktvWklodmNOQVFFTEJRQURnZ0VCQUQ1c0tIK0kKRUJCYzRIcWVsL0VDTDh6eW5VZnBnWXdoN1hBZk1HNDZpMmY4T2NHdWU0TDRrbXdROHUxci9CNUhLMU93QUJUWQpCQVo5VUt5b0FlMW42RlF1Y21waFZzTjQ4Q3JMdzEyL1RxYnVTblcydGwxMmoxWXY1dmVzWXhwUGgzaEhOdlNGCjdNWktrT3dpQXdMWnFJdm42WnlLZUh4VUI1T1laTWtzbU5ITTU1R2tJWi9hMUVFT2NFY01VZUhyamVtaGs3QzkKTzVjdWdsTCtCSE5XWkJjZkthVHRhMFhCZ2tRNXFMMU42b3l0d3hmYlNaeUpCYTB4bHRFNWpNbmYzTlV5SFByWQorSzA4enZXTXRoeXlwM0VPeG5ZaS9sUTBVWlcxY0FFdncvTEVFU1YyS3JBdktFQ0VvV3lWRkVWQ0pTOXRlN2tFCmpkMzl3Qnd3WjltM3kwUT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.key: |
+    LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcGdJQkFBS0NBUUVBdnFkb1J4TWtVeHJoV0wyZWsrVWpCcTlqTkF4dUN1bTd1b1lOa1cvRWgyQk1DREFECk5lbEtGWTJYa3FhS0Z0Y21aSjU3cUlIQ3NZdFlQa25nZTFRVjRvMVFhZEx1L3M5WE5uWXcvNkVVVUhCL3NuQXkKZGpsMGFrUjJ4amV0aVk5Q205NEVHa2xaVVJHY0ZrWmptZVRTb01qclYrZ3hEYkVDRG1QL1lDWFlBVHRzSkRRNgpPcHU1M2hRbUZvaGxoOWxhSC9HL3kxYU9Ma1R2a3A0dmVNenlmQlB0SFdyMlRGSStJazNoS0FZc2l2eDNvTWs1CjFpYkZZdktaTnZaaFFBaXRhQzRyN3F6Ym1qNDA3L0t4aUhCQms3ajMwL3FVUkRPOG1iQkYvZmg3UzkvUEFmcnkKODdyS2VOUWhlL0RZTHZBdFRCbWRGMkxqQnNESkhxV2VlME0ydVFJREFRQUJBb0lCQVFDdGpHUSs5cXpGUFozTwpFdVhzU05PbWZUYjNwU3p5b0N0ME1oemR1L2tSSmxadnlZelNvV2IvMGFFZExKNWRCa0o3cTB4emFwTlkzTGhhCkV4UFdFQWZQNzhVNFgzdVExaHJVaDZnNHVsOXNqY3VnR2NQRm5LMWRJcTlmNWtVQkNEaWcrK3VPSmlDNHpDZmkKbXZhRm15Y2tsMkNyNTcvbmI2Nm9mTngxb0YxTldEOHNsUDNpM0Y4QTdXcDA3VnhxZTdtd1czZlFYNXJ2UjJGSwpNWTdndjZRWDBhYzBlWFZqWGMxZjlMN2kzVEJnamppVnU0U2dnNk1RSkIwWWhBNEZUUFdkcjd1aHhWS2VrTVZVClp2UjF0NmVsTjNCT3B6ODlWNXc1ckxtZzE3VEZETzhPUDdHbTNvbWtMNHRPUWNaTmgzbktUS0ViL3VXbUxZZ1QKa1RLRzVzS0JBb0dCQVBLODBnWm5YeG1PL3dDZFlncDltcFRPYUtwNDVkVjFLeVIxUERRcHZkem9LalhLV0VXdwpHYVA0REVBVHdVTms5VTB2alZYMDdJMVVkNnNYVUdBRU45VEtNU1c5TFEzZmllWmRBejBZSHRIOEFkeWhqZlprCkhQaklMcnhvWnE1Y2hpY2VqSm5kTmQrcURvSjRlQVQrcUFUUFZaWXB2cEwyWkdFM0FqT3RNakNSQW9HQkFNa1MKRjA1Z0cyOHkvSUFZK3dhakdmS0FDdlcvZ2dXNWpNdUttM1VxSndNL2c4ZFNVSjNqZEVTa2ZJQTI3Y293UzFTegp4ZGVRWE9wRlhqOHRaOGUzbXFUM0s3eWZkaHpJUVJhMTNVL3ZWMlA2RnpKZ3JDVGcwYTdLVUcxN3FZRzdsaloyCmNidnpVVlNkOFEzMm5YMm50eWNsS3U2NlFCeEtVQlNaY1dZS2tqZXBBb0dCQU1jbm1JSGNpakFrSEtCYWdEZnYKT2NiaFd3cVN5cTlKeEszUzZpUTZJeVo5N1RQWTRuZTZ0aTdMc3ZGWHcvY1JmQmxwN0dJYjQ0RkpUaTIzb1NCRwpGYkNtZTVCbEYvUUw5YzVsZmVUQVIza3RkREdhOHlpMmx2YWU5NGxwZHVXVDBCV0VnUU0wZGFFZW0yejhmaXhLCjYzdVd5TGU5WkRpYm8xd0hqK3pxS3dXaEFvR0JBTEk1RU9OdG1LT21BOTNmUnBJSmUvUlF2bVk1UzV5YmJVcjEKSHZwcFZJOHllekh2cW5sb3BTUTYwQWd0cC9ReGZuUWpyTmQzcElRYTNJRVBWQS9ZbElCb2ZpSUJEZ1pSRWpCNQpIeU85T0M3ci9DZXhQS1NyaWZCdWIzKzd2dkc1UGxvai9vZmtFbEQ0ZGpRMFJrQ2NxbUZPTnBISUVRK0NaeHo3CkxXS1BPQytSQW9HQkFJSzVFbWptbVIxQkdDWWVBOTYxMWg2dmFFTno3UitKZWhpRjRQS2d3SC9YdExSL1FpNmgKMVNvVUM4MlByS3pGNWNHTDNDeTM2dUZpWG5RVnd1Yi8yUFpKNHk5NzI5SExaTHhtcXRPWG8xVTNsV2UwVi9EdwppWElnVHVBbGtCb2hjOGZSZ1kzOHc4WklvZldqQ1BGL043Y1hYZFBScFU1Rld4LzB2bnIvS01SOQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
