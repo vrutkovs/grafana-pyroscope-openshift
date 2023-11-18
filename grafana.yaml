@@ -77,3 +77,22 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: grafana
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: pyroscope-grafanadatasource
+  namespace: grafana
+spec:
+  datasource:
+    access: proxy
+    editable: true
+    isDefault: false
+    name: Pyroscope
+    type: grafana-pyroscope-datasource
+    url: 'http://pyroscope.pyroscope.svc.cluster.local.:4040'
+    jsonData:
+      minStep: '15s'
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
