@@ -57,30 +57,6 @@ spec:
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDatasource
 metadata:
-  name: prometheus-grafanadatasource
-  namespace: grafana
-spec:
-  datasource:
-    access: proxy
-    editable: true
-    isDefault: true
-    jsonData:
-      httpHeaderName1: 'Authorization'
-      timeInterval: 5s
-      tlsSkipVerify: true
-    name: Prometheus
-    secureJsonData:
-      # oc create token grafana-sa --duration=8760h -n grafana
-      httpHeaderValue1: 'Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlNsSHEyLWdJNmdGS2tfOUpEWkNvZDdzajFOUFl4ZUhtaURYaHh1bjJvQ3cifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjIl0sImV4cCI6MTczMTgzNjE3NCwiaWF0IjoxNzAwMzAwMTc0LCJpc3MiOiJodHRwczovL2t1YmVybmV0ZXMuZGVmYXVsdC5zdmMiLCJrdWJlcm5ldGVzLmlvIjp7Im5hbWVzcGFjZSI6ImdyYWZhbmEiLCJzZXJ2aWNlYWNjb3VudCI6eyJuYW1lIjoiZ3JhZmFuYS1zYSIsInVpZCI6IjVhZDEyZTQ5LTBmZDEtNDRhZC05NWNkLThiMTcxNTJlZjU5NSJ9fSwibmJmIjoxNzAwMzAwMTc0LCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6Z3JhZmFuYTpncmFmYW5hLXNhIn0.q2BiFZIbDffIcsUPfMzEC2wXesuWTRN11lDs3AxaxLg3j6lqV1vghtv2a7Rw9vz2l8sD6aHzpSzcnJzDPI1-ov_omAQfnT68gCCigJL8NpF-MET_sQ8YpUJwTTB-FdMIWDsHnDfdye6HTVAsNN2ACWMCJppugDrI00UAhlNdYHvZc-k5Vr7bLujUg1lrQiqMM9nm5hCHMltyUwGx_UGsf-9yOPmDiRMwKoD9n7e4KjXz8WOMmhHsTRU2ViQTO9ChLVmdU-MirRm2kY1u4DkrMTkaHlL6Epx4KznY_-9Pjxq7cZohM7LPI4P-3HNp8saTfTYHuMPUP16BWRq5Nq1lizev7s5XNVMi2zN32nrTeB-F1H_qqxycUmdGV1i-7XSJMpIfSfHsiBVCpDuyBB6XFXFMy28crDtvjY3sXms3BYUIPl1TeoXjl6IHZ5qngvrDEWr4Z4gmqFhnd4pcvuniYCcJZanwfOEzfOiHo0k3qsaLH3ymp3yV1HqMNlQEcVTcjnAkZF6yPQx3vo3AFU0tvRWpLxMQwlYAiTjbsbyEvP6vnDv0MJrOJr85W-WH_Rh-hG-pLkHGSt6P4g3ppdLUHnTkUTXtj-rZ6oOxcj8B-qY8FlFOopipNY6PszXTRoGSCRYoolxKCoTLE9Ozvh9tt3g05IzWDBCYwBxp2LM2ZRM'
-    type: prometheus
-    url: 'https://thanos-querier.openshift-monitoring.svc.cluster.local:9091'
-  instanceSelector:
-    matchLabels:
-      dashboards: grafana
----
-apiVersion: grafana.integreatly.org/v1beta1
-kind: GrafanaDatasource
-metadata:
   name: pyroscope-grafanadatasource
   namespace: grafana
 spec:
