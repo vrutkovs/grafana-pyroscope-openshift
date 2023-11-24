@@ -1,0 +1,79 @@
+---
+# Source: pyroscope/templates/configmap-agent.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-agent-config-pyroscope
+  namespace: pyroscope
+  labels:
+    helm.sh/chart: pyroscope-1.2.0
+    app.kubernetes.io/name: pyroscope
+    app.kubernetes.io/instance: pyroscope
+    app.kubernetes.io/version: "1.1.5"
+    app.kubernetes.io/managed-by: Helm
+data:
+  config.river: |
+    logging {
+      level  = "info"
+      format = "logfmt"
+    }
+
+    discovery.kubernetes "kubeapiserver" {
+      role = "endpoints"
+      namespaces {
+        names = ["default"]
+      }
+    }
+
+    pyroscope.scrape "pyroscope_scrape" {
+      clustering {
+        enabled = true
+      }
+
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      tls_config {
+        insecure_skip_verify = true
+        server_name = "kubernetes"
+        ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        cert_file = "/var/run/secrets/kubeapi-certs/tls.crt"
+        key_file = "/var/run/secrets/kubeapi-certs/tls.key"
+      }
+      scheme = "https"
+
+      targets    = concat(discovery.kubernetes.kubeapiserver.targets)
+      forward_to = [pyroscope.write.pyroscope_write.receiver]
+
+      profiling_config {
+        profile.memory {
+          enabled = true
+          path = "/debug/pprof/heap"
+        }
+
+        profile.process_cpu {
+          enabled = true
+          path = "/debug/pprof/profile"
+        }
+
+        profile.goroutine {
+          enabled = false
+        }
+
+        profile.block {
+          enabled = false
+        }
+
+        profile.mutex {
+          enabled = false
+        }
+
+        profile.fgprof {
+          enabled = false
+        }
+      }
+    }
+
+    pyroscope.write "pyroscope_write" {
+      endpoint {
+        url = "http://pyroscope.pyroscope.svc.cluster.local.:4040"
+      }
+    }
