@@ -18,6 +18,12 @@ data:
       format = "logfmt"
     }
 
+    pyroscope.write "pyroscope_write" {
+      endpoint {
+        url = "http://pyroscope.pyroscope.svc.cluster.local.:4040"
+      }
+    }
+
     discovery.kubernetes "kubeapiserver" {
       role = "endpoints"
       namespaces {
@@ -25,7 +31,17 @@ data:
       }
     }
 
-    pyroscope.scrape "pyroscope_scrape" {
+    discovery.relabel "kubeapiserver" {
+      targets = concat(discovery.kubernetes.kubeapiserver.targets)
+
+      rule {
+        source_labels = ["__name__"]
+        target_label  = "service_name"
+        replacement   = "kube-apiserver"
+      }
+    }
+
+    pyroscope.scrape "kubeapiserver" {
       clustering {
         enabled = true
       }
@@ -40,7 +56,7 @@ data:
       }
       scheme = "https"
 
-      targets    = concat(discovery.kubernetes.kubeapiserver.targets)
+      targets    = concat(discovery.relabel.kubeapiserver.output)
       forward_to = [pyroscope.write.pyroscope_write.receiver]
 
       profiling_config {
@@ -55,7 +71,8 @@ data:
         }
 
         profile.goroutine {
-          enabled = false
+          enabled = true
+          path = "/debug/pprof/goroutine"
         }
 
         profile.block {
@@ -72,8 +89,67 @@ data:
       }
     }
 
-    pyroscope.write "pyroscope_write" {
-      endpoint {
-        url = "http://pyroscope.pyroscope.svc.cluster.local.:4040"
+    discovery.kubernetes "kubelet" {
+      role = "endpoints"
+      namespaces {
+        names = ["kube-system"]
+      }
+    }
+
+    discovery.relabel "kubelet" {
+      targets = concat(discovery.kubernetes.kubelet.targets)
+
+      rule {
+        source_labels = ["__name__"]
+        target_label  = "service_name"
+        replacement   = "kubelet"
+      }
+    }
+
+    pyroscope.scrape "kubelet" {
+      clustering {
+        enabled = true
+      }
+
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      tls_config {
+        insecure_skip_verify = true
+        server_name = "kubernetes"
+        ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        cert_file = "/var/run/secrets/kubeapi-certs/tls.crt"
+        key_file = "/var/run/secrets/kubeapi-certs/tls.key"
+      }
+      scheme = "https"
+
+      targets    = concat(discovery.relabel.kubelet.output)
+      forward_to = [pyroscope.write.pyroscope_write.receiver]
+
+      profiling_config {
+        profile.memory {
+          enabled = true
+          path = "/debug/pprof/heap"
+        }
+
+        profile.process_cpu {
+          enabled = true
+          path = "/debug/pprof/profile"
+        }
+
+        profile.goroutine {
+          enabled = true
+          path = "/debug/pprof/goroutine"
+        }
+
+        profile.block {
+          enabled = false
+        }
+
+        profile.mutex {
+          enabled = false
+        }
+
+        profile.fgprof {
+          enabled = false
+        }
       }
     }
